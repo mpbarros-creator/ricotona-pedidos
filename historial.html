@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Historial de Pedidos — Ricotona</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- jsPDF + AutoTable -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #121212; color: #f5f5f5; padding: 12px; }
+
+    header { display: flex; justify-content: space-between; flex-wrap: wrap; margin-bottom: 15px; }
+    header button {
+      padding: 8px 14px; font-size: 15px; border: none; border-radius: 6px;
+      cursor: pointer; font-weight: bold; color: white;
+    }
+    header button:first-child { background: #0a6cff; }
+    header button:last-child  { background: #6c757d; }
+    header button:hover { opacity: 0.85; }
+
+    .pedido-linea {
+      background: #1e1e1e; border: 1px solid #444; border-radius: 6px;
+      margin-bottom: 12px; padding: 12px; font-size: 14px;
+    }
+    .pedido-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+    .pedido-header span { font-weight: bold; color: #ff9800; }
+    .botones { display: flex; gap: 6px; }
+    .botones button {
+      padding: 6px 10px; font-size: 14px; border: none; border-radius: 6px;
+      cursor: pointer; font-weight: bold; color: white;
+    }
+    .botones button:nth-child(1) { background: #0a6cff; }
+    .botones button.pdf        { background: #ff9800; }
+    .botones button.borrar     { background: #dc3545; }
+    .botones button:hover { opacity: 0.85; }
+
+    .detalle { display: none; margin-top: 10px; background: #1a1a1a; padding: 8px; border-radius: 4px; }
+    .detalle p { margin: 4px 0; font-size: 13px; }
+    .detalle table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; background: #1a1a1a; }
+    .detalle th, .detalle td { border: 1px solid #333; padding: 5px; text-align: center; }
+    .detalle thead { background: #2a2a2a; color: #ff9800; }
+    .detalle tbody tr:nth-child(even) { background: #222; }
+
+    th.cant, td.cant   { width: 60px; text-align: center; }
+    th.precio, td.precio { width: 70px; text-align: center; }
+    th.dto, td.dto     { width: 60px; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <button onclick="window.location.href='index.html'">◀ Volver al Formulario</button>
+  <button onclick="cargarPedidos()">↻ Recargar</button>
+</header>
+
+<div id="lista-pedidos"></div>
+
+<script>
+  const { jsPDF } = window.jspdf;
+
+  // 👉 URL del Web App (actual)
+  const MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxGi2wS_zwXIWwxQLhQPrqW3s-UPpdNRBlYGDyt5WERObd5rZ0sCPnrA76CmpyBRo9e/exec';
+
+  // Helper para nombres seguros de archivo
+  function slug(s) {
+    return (s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // saca acentos
+      .replace(/[^a-zA-Z0-9]+/g, '_')                   // no alfanum → _
+      .replace(/^_+|_+$/g, '')                          // bordes
+      .slice(0, 60);                                    // límite por si es largo
+  }
+
+  function cargarPedidos() {
+    renderPedidos();
+    agregarListenersPDF();
+  }
+
+  function toggleDetalle(idx) {
+    const el = document.getElementById(`detalle-${idx}`);
+    el.style.display = el.style.display === 'block' ? 'none' : 'block';
+  }
+
+  function eliminaPedido(idx) {
+    if (!confirm("¿Seguro que querés borrar este pedido?")) return;
+    const arr = JSON.parse(localStorage.getItem("pedidos") || "[]");
+    arr.splice(idx, 1);
+    localStorage.setItem("pedidos", JSON.stringify(arr));
+    cargarPedidos();
+  }
+
+  function agregarListenersPDF() {
+    setTimeout(() => {
+      document.querySelectorAll('.pdf').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.index);
+          const pedidos = JSON.parse(localStorage.getItem("pedidos") || "[]");
+          if (!pedidos[idx]) return alert("Pedido no encontrado");
+          exportarPDF(pedidos[idx], idx);
+        });
+      });
+    }, 100);
+  }
+
+  function exportarPDF(pedido, idx) {
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const margin = 40, lh = 14;
+    let y = margin;
+
+    doc.setFontSize(18);
+    doc.text("NOTA DE PEDIDO", doc.internal.pageSize.width / 2, y, { align: 'center' });
+
+    y += lh * 2;
+    doc.setFontSize(12);
+    doc.text(`Cliente: ${pedido.cliente}`, margin, y);
+    doc.text(`Fecha Pedido: ${pedido.fechaPedido}`, margin + 300, y);
+    y += lh;
+    doc.text(`Transporte: ${pedido.transporte}`, margin, y);
+    doc.text(`Condiciones: ${pedido.condiciones}`, margin + 300, y);
+    y += lh;
+    doc.text(`Vendedor: ${pedido.vendedor}`, margin, y);
+    doc.text(`Entrega: ${pedido.fechaEntrega}`, margin + 300, y);
+
+    if (pedido.observaciones) {
+      y += lh * 1.5;
+      doc.text("Observaciones:", margin, y);
+      y += lh;
+      doc.setFontSize(11);
+      const lines = doc.splitTextToSize(pedido.observaciones, doc.internal.pageSize.width - margin * 2);
+      doc.text(lines, margin, y);
+      doc.setFontSize(12);
+      y += lh * (lines.length + 1);
+    }
+
+    doc.autoTable({
+      startY: y,
+      margin: { left: margin, right: margin },
+      head: [['Descripción', 'Marca', 'Peso', 'Código', 'Interno', 'Cant', 'Precio', 'Dto']],
+      body: (pedido.productos || []).map(p => [
+        p.descripcion, p.marca, p.peso, p.codigo,
+        `${p.col1} ${p.interno} ${p.dto}`,
+        p.cantidad, p.precio, p.descuento ?? ""
+      ]),
+      styles: { fontSize: 10, cellPadding: 4 },
+      headStyles: { fillColor: [230, 230, 230] }
+    });
+
+    // Nombre de archivo: cliente + fecha (yyyy-mm-dd)
+    const hoy = (pedido?.fechaPedido ? new Date(pedido.fechaPedido) : new Date())
+                  .toISOString().slice(0,10);
+    const filename = `pedido_${slug(pedido.cliente || 'sin_cliente')}_${hoy}.pdf`;
+
+    // 1) Guardar local
+    doc.save(filename);
+
+    // 2) Enviar por correo + log + Drive (servidor)
+    try {
+      const dataUri = doc.output('datauristring'); // "data:application/pdf;base64,AAA..."
+      const base64  = dataUri.split(',')[1] || '';
+
+      fetch(MAIL_WEBAPP_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request (sin preflight)
+        credentials: 'include',
+        body: JSON.stringify({
+          filename,
+          pdfBase64: base64,
+          meta: {
+            cliente: pedido.cliente,
+            fecha:   pedido.fechaPedido,
+            vendedor: pedido.vendedor || '',
+            transporte: pedido.transporte || '',
+            condiciones: pedido.condiciones || '',
+            fechaEntrega: pedido.fechaEntrega || '',
+            numProductos: (pedido.productos || []).length
+          }
+        })
+      })
+      .then(() => alert('PDF enviado por correo ✅'))
+      .catch(err => {
+        console.error('Error de envío:', err);
+        alert('Error de envío al correo');
+      });
+    } catch (e) {
+      console.error('Error preparando el PDF para correo:', e);
+      alert('Error de envío al correo');
+    }
+  }
+
+  function renderPedidos() {
+    const cont = document.getElementById('lista-pedidos');
+    cont.innerHTML = "";
+    const pedidos = JSON.parse(localStorage.getItem("pedidos") || "[]");
+
+    if (!pedidos.length) {
+      cont.innerHTML = "<p>No hay pedidos guardados.</p>";
+      return;
+    }
+
+    pedidos.forEach((pedido, idx) => {
+      const div = document.createElement('div');
+      div.className = 'pedido-linea';
+      div.innerHTML = `
+        <div class="pedido-header">
+          <span>Pedido #${idx + 1} — Cliente: ${pedido.cliente} | Fecha: ${pedido.fechaPedido}</span>
+          <div class="botones">
+            <button onclick="toggleDetalle(${idx})">Ver Detalle</button>
+            <button class="pdf" data-index="${idx}">Exportar PDF</button>
+            <button class="borrar" onclick="eliminaPedido(${idx})">Borrar</button>
+          </div>
+        </div>
+        <div class="detalle" id="detalle-${idx}">
+          <p><strong>Transporte:</strong> ${pedido.transporte}</p>
+          <p><strong>Condiciones:</strong> ${pedido.condiciones}</p>
+          <p><strong>Vendedor:</strong> ${pedido.vendedor}</p>
+          <p><strong>Entrega:</strong> ${pedido.fechaEntrega}</p>
+          <p><strong>Observaciones:</strong> ${pedido.observaciones || '-'}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Descripción</th><th>Marca</th><th>Peso</th><th>Código</th><th>Interno</th>
+                <th class="cant">Cant</th><th class="precio">Precio</th><th class="dto">Dto</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(pedido.productos || []).map(p => `
+                <tr>
+                  <td>${p.descripcion}</td>
+                  <td>${p.marca}</td>
+                  <td>${p.peso}</td>
+                  <td>${p.codigo}</td>
+                  <td>${p.col1} ${p.interno} ${p.dto}</td>
+                  <td class="cant">${p.cantidad}</td>
+                  <td class="precio">${p.precio}</td>
+                  <td class="dto">${p.descuento ?? ""}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>          
+        </div>`;
+      cont.appendChild(div);
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", cargarPedidos);
+</script>
+
+</body>
+</html>

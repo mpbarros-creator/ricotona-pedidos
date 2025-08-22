@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Nota de Pedido — Ricotona</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #121212;
+      color: #f5f5f5;
+      padding: 12px;
+    }
+
+    header { text-align: center; margin-bottom: 10px; }
+    header img { max-width: 160px; height: auto; }
+    h1 { font-size: 22px; margin: 6px 0 6px; color: #ff9800; }
+
+    /* Fecha del sistema debajo del logo */
+    .fecha-sistema { font-size: 13px; color: #cfcfcf; margin-top: 2px; }
+
+    section { width: 100%; margin-bottom: 20px; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .form-grid label {
+      display: flex; flex-direction: column;
+      font-weight: bold; font-size: 14px;
+    }
+    input, textarea {
+      margin-top: 4px; padding: 8px; font-size: 14px; width: 100%;
+      border: 1px solid #444; border-radius: 4px;
+      background: #1e1e1e; color: #f5f5f5;
+    }
+    textarea { min-height: 80px; resize: vertical; margin-bottom: 12px; }
+
+    /* ====== Date inputs (naranja) ====== */
+    input[type="date"] {
+      color-scheme: dark;
+      background: #1e1e1e;
+      color: #f5f5f5;
+      border: 1px solid #444;
+      /* Icono calendario naranja como background */
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='3' y='4' width='18' height='18' rx='2' ry='2' fill='none' stroke='%23ff9800' stroke-width='2'/><line x1='16' y1='2' x2='16' y2='6' stroke='%23ff9800' stroke-width='2'/><line x1='8' y1='2' x2='8' y2='6' stroke='%23ff9800' stroke-width='2'/><line x1='3' y1='10' x2='21' y2='10' stroke='%23ff9800' stroke-width='2'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      background-size: 18px 18px;
+      padding-right: 36px; /* espacio para el icono */
+    }
+    /* Oculto el picker nativo oscuro y dejo el nuestro naranja */
+    input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0; }
+
+    .buttons {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;
+    }
+    button {
+      padding: 10px 16px; font-size: 15px; border: none; border-radius: 6px;
+      cursor: pointer; font-weight: bold; transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.85; }
+    #guardar-local { background: #28a745; color: #fff; }
+    #ver-historial { background: #0a6cff; color: #fff; }
+    #recargar { background: #6c757d; color: #fff; }
+
+    table {
+      width: 100%; border-collapse: collapse; margin-top: 12px;
+      background: #1a1a1a; font-size: 12px;
+    }
+    th, td { padding: 6px; text-align: left; border: 1px solid #333; }
+    thead { background-color: #2a2a2a; color: #ff9800; }
+    tbody tr:nth-child(even) { background: #222; }
+
+    /* Columnas angostas + centradas */
+    th.cant, td.cant { width: 80px; text-align: center; }
+    th.precio, td.precio { width: 80px; text-align: center; }
+    th.dto, td.dto { width: 80px; text-align: center; }
+    td.cant input { width: 80px !important; text-align: center; }
+    td.precio input { width: 80px !important; text-align: center; }
+    td.dto input { width: 80px !important; text-align: center; }
+
+    @media (max-width: 600px) { th, td { font-size: 11px; padding: 4px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="logo.png" alt="Logo Ricotona">
+    <h1>Nota de Pedido</h1>
+    <div id="fecha-sistema" class="fecha-sistema"></div>
+  </header>
+
+  <div class="form-grid">
+    <label>Cliente: <input type="text" id="cliente"></label>
+    <label>Fecha Pedido: <input type="date" id="fecha-pedido" class="orange-picker"></label>
+    <label>Transporte: <input type="text" id="transporte"></label>
+    <label>Condiciones: <input type="text" id="condiciones"></label>
+    <label>Vendedor: <input type="text" id="vendedor"></label>
+    <label>Fecha Entrega: <input type="date" id="fecha-entrega" class="orange-picker"></label>
+  </div>
+
+  <label>Observaciones:</label>
+  <textarea id="observaciones" placeholder="Agregá observaciones..."></textarea>
+
+  <div id="formulario-productos"></div>
+
+  <div class="buttons">
+    <button id="guardar-local">Guardar</button>
+    <button id="ver-historial">Ver Historial</button>
+    <button id="recargar">Recargar</button>
+  </div>
+
+  <script src="script.js"></script>
+  <script>
+    // Setea "Fecha Pedido" con fecha del sistema y muestra rótulo bajo el logo
+    (function(){
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth()+1).padStart(2,'0');
+      const dd = String(now.getDate()).padStart(2,'0');
+
+      const fechaISO = `${yyyy}-${mm}-${dd}`;     // para input[type=date]
+      const fechaBonita = `${dd}/${mm}/${yyyy}`;  // para mostrar
+
+      const fp = document.getElementById('fecha-pedido');
+      if (fp && !fp.value) fp.value = fechaISO;
+
+      const fs = document.getElementById('fecha-sistema');
+      if (fs) fs.textContent = `Fecha del sistema: ${fechaBonita}`;
+    })();
+  </script>
+</body>
+</html>
