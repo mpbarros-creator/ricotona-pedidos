@@ -5,97 +5,87 @@
   <base href="https://mpbarros-creator.github.io/ricotona-pedidos/">
   <title>Historial de Pedidos — Ricotona</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <!-- jsPDF + AutoTable -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; background: #121212; color: #f5f5f5; padding: 12px; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,Helvetica,sans-serif;background:#121212;color:#f5f5f5;padding:12px}
 
-    header { display: flex; justify-content: space-between; flex-wrap: wrap; margin-bottom: 15px; }
-    header button {
-      padding: 8px 14px; font-size: 15px; border: none; border-radius: 6px;
-      cursor: pointer; font-weight: bold; color: white; background: #0a6cff;
-    }
-    header a {
-      display: inline-block; padding: 8px 14px; border-radius: 6px; text-decoration: none;
-      font-weight: bold; background: #2e7d32; color: white; margin-left: 8px;
-    }
+    header{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px}
+    header button{padding:8px 14px;font-size:15px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;color:#fff}
+    .blue{background:#0a6cff}
+    .green{background:#2e7d32}
 
-    .list { display: grid; gap: 10px; }
-    .item {
-      background: #1a1a1a; border: 1px solid #333; border-radius: 8px;
-      padding: 10px;
-    }
-    .item h3 { font-size: 18px; color: #ff9800; margin-bottom: 8px; }
-    .fila { display: flex; flex-wrap: wrap; gap: 12px; font-size: 14px; color: #ddd; }
-    .fila b { color: #ccc; }
-    .botones { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
-    .botones button {
-      padding: 6px 10px; font-size: 14px; border: none; border-radius: 6px;
-      cursor: pointer; font-weight: bold; color: white;
-    }
-    .botones button:nth-child(1) { background: #0a6cff; }
-    .botones button.pdf        { background: #ff9800; }
-    .botones button.borrar     { background: #dc3545; }
-    .botones button:hover { opacity: 0.85; }
+    .item{background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:10px;margin-bottom:10px}
+    .item h3{font-size:18px;color:#ff9800;margin-bottom:8px}
+    .fila{display:flex;flex-wrap:wrap;gap:12px;font-size:14px;color:#ddd;margin-bottom:6px}
+    .fila b{color:#ccc}
+    .botones{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+    .botones button{padding:6px 10px;font-size:14px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;color:#fff}
+    .btn-pdf{background:#ff9800;color:#111}
+    .btn-ver{background:#0a6cff}
+    .btn-del{background:#dc3545}
 
-    .detalle { display: none; margin-top: 10px; background: #1a1a1a; padding: 8px; border-radius: 4px; }
-    .detalle p { margin: 4px 0; font-size: 13px; }
-    .detalle table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; background: #1a1a1a; }
-    .detalle th, .detalle td { border: 1px solid #333; padding: 5px; text-align: center; }
-    .detalle thead { background: #2a2a2a; color: #ff9800; }
-    .detalle tbody tr:nth-child(even) { background: #181818; }
+    .detalle{display:none;margin-top:10px;background:#1a1a1a;padding:8px;border-radius:4px}
+    .detalle p{margin:4px 0;font-size:13px}
+    .detalle table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px;background:#1a1a1a}
+    .detalle th,.detalle td{border:1px solid #333;padding:5px;text-align:center}
+    .detalle thead{background:#2a2a2a;color:#ff9800}
+    .detalle tbody tr:nth-child(even){background:#181818}
   </style>
 </head>
 <body>
   <header>
-    <div>
-      <button onclick="cargarPedidos()">↻ Recargar</button>
-      <a href="index.html">← Volver a la Nota</a>
-    </div>
-    <div>
-      <!-- espacio para acciones futuras -->
-    </div>
+    <button class="blue" id="btn-recargar">↻ Recargar</button>
+    <button class="green" id="btn-volver">← Volver a la Nota</button>
   </header>
 
   <div id="lista-pedidos"></div>
 
+  <!-- Helpers de almacenamiento compartidos -->
+  <script>
+    window.STORAGE_KEY = 'ricotona_pedidos_v1';
+    window.RicoStore = {
+      get() {
+        try { return JSON.parse(localStorage.getItem(window.STORAGE_KEY) || '[]'); }
+        catch { return []; }
+      },
+      set(arr) {
+        localStorage.setItem(window.STORAGE_KEY, JSON.stringify(arr));
+      }
+    };
+  </script>
+
   <script>
     const { jsPDF } = window.jspdf;
 
-    // 👉 URL del Web App (la que ya probaste que dice `ok drive-log-v2`)
-    // (Dejala tal cual la tenés funcionando)
+    // 👉 PONÉ AQUÍ TU URL DE APPS SCRIPT (la que devuelve: ok drive-log-v2)
     const MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxGi2wS_zwXIWwxQLhQPrqW3s-UPpdNRBlYGDyt5WERObd5rZ0sCPnrA76CmpyBRo9e/exec';
 
-    // Utilidad para “slugificar” cliente a nombre de archivo
+    // Utilidad para nombre de archivo
     const slug = s => String(s || '')
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-      .slice(0, 60);
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'')
+      .slice(0,60);
 
-    // ====== Render de pedidos guardados en localStorage ======
-    function cargarPedidos() { renderPedidos(); }
+    function getPedidos(){ return window.RicoStore.get(); }
+    function setPedidos(a){ window.RicoStore.set(a); }
+
+    function cargarPedidos(){ renderPedidos(); }
+    document.getElementById('btn-recargar')?.addEventListener('click', cargarPedidos);
+    document.getElementById('btn-volver')?.addEventListener('click', () => { location.href = 'index.html'; });
+
     document.addEventListener('DOMContentLoaded', cargarPedidos);
 
-    function getPedidos() {
-      try {
-        const raw = localStorage.getItem('pedidosRicotona') || '[]';
-        return JSON.parse(raw);
-      } catch {
-        return [];
-      }
-    }
-    function setPedidos(arr) {
-      localStorage.setItem('pedidosRicotona', JSON.stringify(arr));
-    }
-
-    function renderPedidos() {
+    function renderPedidos(){
       const cont = document.getElementById('lista-pedidos');
       cont.innerHTML = '';
       const pedidos = getPedidos();
 
-      if (!pedidos.length) {
+      if(!pedidos.length){
         cont.innerHTML = '<p style="color:#ccc">No hay pedidos guardados.</p>';
         return;
       }
@@ -103,7 +93,7 @@
       pedidos.forEach((p, idx) => {
         const div = document.createElement('div');
         div.className = 'item';
-        const fecha = p.fechaPedido || '';
+        const fecha = p.fechaPedido || p['fecha-pedido'] || '';
         const cliente = p.cliente || 'Sin cliente';
 
         div.innerHTML = `
@@ -112,13 +102,13 @@
             <div><b>Fecha:</b> ${fecha || '-'}</div>
             <div><b>Vendedor:</b> ${p.vendedor || '-'}</div>
             <div><b>Transporte:</b> ${p.transporte || '-'}</div>
-            <div><b>Entrega:</b> ${p.fechaEntrega || '-'}</div>
+            <div><b>Entrega:</b> ${p.fechaEntrega || p['fecha-entrega'] || '-'}</div>
             <div><b># Productos:</b> ${(p.productos||[]).length}</div>
           </div>
           <div class="botones">
-            <button onclick="toggleDetalle(${idx})">Ver</button>
-            <button class="pdf" onclick="exportarPDF(${idx})">Exportar PDF</button>
-            <button class="borrar" onclick="borrarPedido(${idx})">Borrar</button>
+            <button class="btn-ver"  onclick="toggleDetalle(${idx})">Ver</button>
+            <button class="btn-pdf"  onclick="exportarPDF(${idx})">Exportar PDF</button>
+            <button class="btn-del"  onclick="borrarPedido(${idx})">Borrar</button>
           </div>
           <div class="detalle" id="det-${idx}">
             <p><b>Condiciones:</b> ${p.condiciones || '-'}</p>
@@ -155,30 +145,27 @@
       });
     }
 
-    function toggleDetalle(i) {
-      const box = document.getElementById('det-'+i);
-      if (box) box.style.display = (box.style.display==='block'?'none':'block');
+    function toggleDetalle(i){
+      const el = document.getElementById('det-'+i);
+      if(!el) return;
+      el.style.display = (el.style.display==='block' ? 'none' : 'block');
     }
 
-    // ====== Exportación PDF + envío a GAS ======
-    async function exportarPDF(i) {
+    async function exportarPDF(i){
       const pedidos = getPedidos();
       const pedido  = pedidos[i];
-      if (!pedido) return alert('Pedido no encontrado');
+      if(!pedido) return alert('Pedido no encontrado');
 
-      // 1) armar PDF
-      const doc = new jsPDF({ unit:'pt', format:'a4' });
       const hoy = new Date().toISOString().slice(0,10);
       const filename = `pedido_${slug(pedido.cliente||'sin_cliente')}_${hoy}.pdf`;
 
-      // cabecera
+      const doc = new jsPDF({ unit:'pt', format:'a4' });
       doc.setFontSize(16);
       doc.text('NOTA DE PEDIDO', 40, 40);
       doc.setFontSize(11);
       doc.text(`Cliente: ${pedido.cliente||'-'}`, 40, 62);
-      doc.text(`Fecha Pedido: ${pedido.fechaPedido||hoy}`, 40, 78);
+      doc.text(`Fecha Pedido: ${pedido.fechaPedido || pedido['fecha-pedido'] || hoy}`, 40, 78);
 
-      // tabla
       const head = [['Descripción','Marca','Peso','Código','Col','Interno','Dcto%','Cant','Precio','Desc.','Sub']];
       const body = (pedido.productos||[]).map(p => [
         p.descripcion||'', p.marca||'', p.peso||'', p.codigo||'',
@@ -193,20 +180,20 @@
         headStyles: { fillColor: [230,230,230], textColor: 20 }
       });
 
-      // 1.a Guardar local (descarga)
+      // Guardar local (descarga)
       doc.save(filename);
 
-      // 2) Enviar por correo + log + drive (Apps Script)
+      // Enviar a Apps Script
       try {
         const dataUri = doc.output('datauristring');
         const base64  = (dataUri.split(',')[1]||'');
         const meta    = {
           cliente: pedido.cliente||'',
-          fecha: pedido.fechaPedido||hoy,
+          fecha:   pedido.fechaPedido || pedido['fecha-pedido'] || hoy,
           vendedor: pedido.vendedor||'',
           transporte: pedido.transporte||'',
           condiciones: pedido.condiciones||'',
-          fechaEntrega: pedido.fechaEntrega||'',
+          fechaEntrega: pedido.fechaEntrega || pedido['fecha-entrega'] || '',
           numProductos: (pedido.productos||[]).length
         };
 
@@ -224,9 +211,8 @@
       }
     }
 
-    // ====== Borrado ======
-    function borrarPedido(i) {
-      if (!confirm('¿Eliminar este pedido?')) return;
+    function borrarPedido(i){
+      if(!confirm('¿Eliminar este pedido?')) return;
       const arr = getPedidos();
       arr.splice(i,1);
       setPedidos(arr);
