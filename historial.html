@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
+  <base href="https://mpbarros-creator.github.io/ricotona-pedidos/">
   <title>Historial de Pedidos — Ricotona</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- jsPDF + AutoTable -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
@@ -14,19 +15,22 @@
     header { display: flex; justify-content: space-between; flex-wrap: wrap; margin-bottom: 15px; }
     header button {
       padding: 8px 14px; font-size: 15px; border: none; border-radius: 6px;
-      cursor: pointer; font-weight: bold; color: white;
+      cursor: pointer; font-weight: bold; color: white; background: #0a6cff;
     }
-    header button:first-child { background: #0a6cff; }
-    header button:last-child  { background: #6c757d; }
-    header button:hover { opacity: 0.85; }
+    header a {
+      display: inline-block; padding: 8px 14px; border-radius: 6px; text-decoration: none;
+      font-weight: bold; background: #2e7d32; color: white; margin-left: 8px;
+    }
 
-    .pedido-linea {
-      background: #1e1e1e; border: 1px solid #444; border-radius: 6px;
-      margin-bottom: 12px; padding: 12px; font-size: 14px;
+    .list { display: grid; gap: 10px; }
+    .item {
+      background: #1a1a1a; border: 1px solid #333; border-radius: 8px;
+      padding: 10px;
     }
-    .pedido-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
-    .pedido-header span { font-weight: bold; color: #ff9800; }
-    .botones { display: flex; gap: 6px; }
+    .item h3 { font-size: 18px; color: #ff9800; margin-bottom: 8px; }
+    .fila { display: flex; flex-wrap: wrap; gap: 12px; font-size: 14px; color: #ddd; }
+    .fila b { color: #ccc; }
+    .botones { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
     .botones button {
       padding: 6px 10px; font-size: 14px; border: none; border-radius: 6px;
       cursor: pointer; font-weight: bold; color: white;
@@ -41,210 +45,193 @@
     .detalle table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; background: #1a1a1a; }
     .detalle th, .detalle td { border: 1px solid #333; padding: 5px; text-align: center; }
     .detalle thead { background: #2a2a2a; color: #ff9800; }
-    .detalle tbody tr:nth-child(even) { background: #222; }
-
-    th.cant, td.cant   { width: 60px; text-align: center; }
-    th.precio, td.precio { width: 70px; text-align: center; }
-    th.dto, td.dto     { width: 60px; text-align: center; }
+    .detalle tbody tr:nth-child(even) { background: #181818; }
   </style>
 </head>
 <body>
+  <header>
+    <div>
+      <button onclick="cargarPedidos()">↻ Recargar</button>
+      <a href="index.html">← Volver a la Nota</a>
+    </div>
+    <div>
+      <!-- espacio para acciones futuras -->
+    </div>
+  </header>
 
-<header>
-  <button onclick="window.location.href='index.html'">◀ Volver al Formulario</button>
-  <button onclick="cargarPedidos()">↻ Recargar</button>
-</header>
+  <div id="lista-pedidos"></div>
 
-<div id="lista-pedidos"></div>
+  <script>
+    const { jsPDF } = window.jspdf;
 
-<script>
-  const { jsPDF } = window.jspdf;
+    // 👉 URL del Web App (la que ya probaste que dice `ok drive-log-v2`)
+    // (Dejala tal cual la tenés funcionando)
+    const MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxGi2wS_zwXIWwxQLhQPrqW3s-UPpdNRBlYGDyt5WERObd5rZ0sCPnrA76CmpyBRo9e/exec';
 
-  // 👉 URL del Web App (actual)
-  const MAIL_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxGi2wS_zwXIWwxQLhQPrqW3s-UPpdNRBlYGDyt5WERObd5rZ0sCPnrA76CmpyBRo9e/exec';
+    // Utilidad para “slugificar” cliente a nombre de archivo
+    const slug = s => String(s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+      .slice(0, 60);
 
-  // Helper para nombres seguros de archivo
-  function slug(s) {
-    return (s || '')
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // saca acentos
-      .replace(/[^a-zA-Z0-9]+/g, '_')                   // no alfanum → _
-      .replace(/^_+|_+$/g, '')                          // bordes
-      .slice(0, 60);                                    // límite por si es largo
-  }
+    // ====== Render de pedidos guardados en localStorage ======
+    function cargarPedidos() { renderPedidos(); }
+    document.addEventListener('DOMContentLoaded', cargarPedidos);
 
-  function cargarPedidos() {
-    renderPedidos();
-    agregarListenersPDF();
-  }
-
-  function toggleDetalle(idx) {
-    const el = document.getElementById(`detalle-${idx}`);
-    el.style.display = el.style.display === 'block' ? 'none' : 'block';
-  }
-
-  function eliminaPedido(idx) {
-    if (!confirm("¿Seguro que querés borrar este pedido?")) return;
-    const arr = JSON.parse(localStorage.getItem("pedidos") || "[]");
-    arr.splice(idx, 1);
-    localStorage.setItem("pedidos", JSON.stringify(arr));
-    cargarPedidos();
-  }
-
-  function agregarListenersPDF() {
-    setTimeout(() => {
-      document.querySelectorAll('.pdf').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const idx = parseInt(btn.dataset.index);
-          const pedidos = JSON.parse(localStorage.getItem("pedidos") || "[]");
-          if (!pedidos[idx]) return alert("Pedido no encontrado");
-          exportarPDF(pedidos[idx], idx);
-        });
-      });
-    }, 100);
-  }
-
-  function exportarPDF(pedido, idx) {
-    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-    const margin = 40, lh = 14;
-    let y = margin;
-
-    doc.setFontSize(18);
-    doc.text("NOTA DE PEDIDO", doc.internal.pageSize.width / 2, y, { align: 'center' });
-
-    y += lh * 2;
-    doc.setFontSize(12);
-    doc.text(`Cliente: ${pedido.cliente}`, margin, y);
-    doc.text(`Fecha Pedido: ${pedido.fechaPedido}`, margin + 300, y);
-    y += lh;
-    doc.text(`Transporte: ${pedido.transporte}`, margin, y);
-    doc.text(`Condiciones: ${pedido.condiciones}`, margin + 300, y);
-    y += lh;
-    doc.text(`Vendedor: ${pedido.vendedor}`, margin, y);
-    doc.text(`Entrega: ${pedido.fechaEntrega}`, margin + 300, y);
-
-    if (pedido.observaciones) {
-      y += lh * 1.5;
-      doc.text("Observaciones:", margin, y);
-      y += lh;
-      doc.setFontSize(11);
-      const lines = doc.splitTextToSize(pedido.observaciones, doc.internal.pageSize.width - margin * 2);
-      doc.text(lines, margin, y);
-      doc.setFontSize(12);
-      y += lh * (lines.length + 1);
+    function getPedidos() {
+      try {
+        const raw = localStorage.getItem('pedidosRicotona') || '[]';
+        return JSON.parse(raw);
+      } catch {
+        return [];
+      }
+    }
+    function setPedidos(arr) {
+      localStorage.setItem('pedidosRicotona', JSON.stringify(arr));
     }
 
-    doc.autoTable({
-      startY: y,
-      margin: { left: margin, right: margin },
-      head: [['Descripción', 'Marca', 'Peso', 'Código', 'Interno', 'Cant', 'Precio', 'Dto']],
-      body: (pedido.productos || []).map(p => [
-        p.descripcion, p.marca, p.peso, p.codigo,
-        `${p.col1} ${p.interno} ${p.dto}`,
-        p.cantidad, p.precio, p.descuento ?? ""
-      ]),
-      styles: { fontSize: 10, cellPadding: 4 },
-      headStyles: { fillColor: [230, 230, 230] }
-    });
+    function renderPedidos() {
+      const cont = document.getElementById('lista-pedidos');
+      cont.innerHTML = '';
+      const pedidos = getPedidos();
 
-    // Nombre de archivo: cliente + fecha (yyyy-mm-dd)
-    const hoy = (pedido?.fechaPedido ? new Date(pedido.fechaPedido) : new Date())
-                  .toISOString().slice(0,10);
-    const filename = `pedido_${slug(pedido.cliente || 'sin_cliente')}_${hoy}.pdf`;
+      if (!pedidos.length) {
+        cont.innerHTML = '<p style="color:#ccc">No hay pedidos guardados.</p>';
+        return;
+      }
 
-    // 1) Guardar local
-    doc.save(filename);
+      pedidos.forEach((p, idx) => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        const fecha = p.fechaPedido || '';
+        const cliente = p.cliente || 'Sin cliente';
 
-    // 2) Enviar por correo + log + Drive (servidor)
-    try {
-      const dataUri = doc.output('datauristring'); // "data:application/pdf;base64,AAA..."
-      const base64  = dataUri.split(',')[1] || '';
-
-      fetch(MAIL_WEBAPP_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request (sin preflight)
-        credentials: 'include',
-        body: JSON.stringify({
-          filename,
-          pdfBase64: base64,
-          meta: {
-            cliente: pedido.cliente,
-            fecha:   pedido.fechaPedido,
-            vendedor: pedido.vendedor || '',
-            transporte: pedido.transporte || '',
-            condiciones: pedido.condiciones || '',
-            fechaEntrega: pedido.fechaEntrega || '',
-            numProductos: (pedido.productos || []).length
-          }
-        })
-      })
-      .then(() => alert('PDF enviado por correo ✅'))
-      .catch(err => {
-        console.error('Error de envío:', err);
-        alert('Error de envío al correo');
-      });
-    } catch (e) {
-      console.error('Error preparando el PDF para correo:', e);
-      alert('Error de envío al correo');
-    }
-  }
-
-  function renderPedidos() {
-    const cont = document.getElementById('lista-pedidos');
-    cont.innerHTML = "";
-    const pedidos = JSON.parse(localStorage.getItem("pedidos") || "[]");
-
-    if (!pedidos.length) {
-      cont.innerHTML = "<p>No hay pedidos guardados.</p>";
-      return;
-    }
-
-    pedidos.forEach((pedido, idx) => {
-      const div = document.createElement('div');
-      div.className = 'pedido-linea';
-      div.innerHTML = `
-        <div class="pedido-header">
-          <span>Pedido #${idx + 1} — Cliente: ${pedido.cliente} | Fecha: ${pedido.fechaPedido}</span>
-          <div class="botones">
-            <button onclick="toggleDetalle(${idx})">Ver Detalle</button>
-            <button class="pdf" data-index="${idx}">Exportar PDF</button>
-            <button class="borrar" onclick="eliminaPedido(${idx})">Borrar</button>
+        div.innerHTML = `
+          <h3>Pedido de ${cliente}</h3>
+          <div class="fila">
+            <div><b>Fecha:</b> ${fecha || '-'}</div>
+            <div><b>Vendedor:</b> ${p.vendedor || '-'}</div>
+            <div><b>Transporte:</b> ${p.transporte || '-'}</div>
+            <div><b>Entrega:</b> ${p.fechaEntrega || '-'}</div>
+            <div><b># Productos:</b> ${(p.productos||[]).length}</div>
           </div>
-        </div>
-        <div class="detalle" id="detalle-${idx}">
-          <p><strong>Transporte:</strong> ${pedido.transporte}</p>
-          <p><strong>Condiciones:</strong> ${pedido.condiciones}</p>
-          <p><strong>Vendedor:</strong> ${pedido.vendedor}</p>
-          <p><strong>Entrega:</strong> ${pedido.fechaEntrega}</p>
-          <p><strong>Observaciones:</strong> ${pedido.observaciones || '-'}</p>
-          <table>
-            <thead>
-              <tr>
-                <th>Descripción</th><th>Marca</th><th>Peso</th><th>Código</th><th>Interno</th>
-                <th class="cant">Cant</th><th class="precio">Precio</th><th class="dto">Dto</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${(pedido.productos || []).map(p => `
+          <div class="botones">
+            <button onclick="toggleDetalle(${idx})">Ver</button>
+            <button class="pdf" onclick="exportarPDF(${idx})">Exportar PDF</button>
+            <button class="borrar" onclick="borrarPedido(${idx})">Borrar</button>
+          </div>
+          <div class="detalle" id="det-${idx}">
+            <p><b>Condiciones:</b> ${p.condiciones || '-'}</p>
+            <p><b>Observaciones:</b> ${p.observaciones || '-'}</p>
+            <table>
+              <thead>
                 <tr>
-                  <td>${p.descripcion}</td>
-                  <td>${p.marca}</td>
-                  <td>${p.peso}</td>
-                  <td>${p.codigo}</td>
-                  <td>${p.col1} ${p.interno} ${p.dto}</td>
-                  <td class="cant">${p.cantidad}</td>
-                  <td class="precio">${p.precio}</td>
-                  <td class="dto">${p.descuento ?? ""}</td>
-                </tr>`).join('')}
-            </tbody>
-          </table>          
-        </div>`;
-      cont.appendChild(div);
-    });
-  }
+                  <th>Descripción</th><th>Marca</th><th>Peso</th><th>Código</th>
+                  <th>Col</th><th>Interno</th><th>Dcto%</th><th>Cant</th>
+                  <th>Precio</th><th>Desc.</th><th>Sub total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(p.productos||[]).map(it => `
+                  <tr>
+                    <td>${it.descripcion||''}</td>
+                    <td>${it.marca||''}</td>
+                    <td>${it.peso||''}</td>
+                    <td>${it.codigo||''}</td>
+                    <td>${it.coll||''}</td>
+                    <td>${it.interno||''}</td>
+                    <td>${it.dto||''}</td>
+                    <td>${it.cantidad||''}</td>
+                    <td>${it.precio||''}</td>
+                    <td>${it.descuento||''}</td>
+                    <td>${it.subtotal||''}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+        cont.appendChild(div);
+      });
+    }
 
-  document.addEventListener("DOMContentLoaded", cargarPedidos);
-</script>
+    function toggleDetalle(i) {
+      const box = document.getElementById('det-'+i);
+      if (box) box.style.display = (box.style.display==='block'?'none':'block');
+    }
 
+    // ====== Exportación PDF + envío a GAS ======
+    async function exportarPDF(i) {
+      const pedidos = getPedidos();
+      const pedido  = pedidos[i];
+      if (!pedido) return alert('Pedido no encontrado');
+
+      // 1) armar PDF
+      const doc = new jsPDF({ unit:'pt', format:'a4' });
+      const hoy = new Date().toISOString().slice(0,10);
+      const filename = `pedido_${slug(pedido.cliente||'sin_cliente')}_${hoy}.pdf`;
+
+      // cabecera
+      doc.setFontSize(16);
+      doc.text('NOTA DE PEDIDO', 40, 40);
+      doc.setFontSize(11);
+      doc.text(`Cliente: ${pedido.cliente||'-'}`, 40, 62);
+      doc.text(`Fecha Pedido: ${pedido.fechaPedido||hoy}`, 40, 78);
+
+      // tabla
+      const head = [['Descripción','Marca','Peso','Código','Col','Interno','Dcto%','Cant','Precio','Desc.','Sub']];
+      const body = (pedido.productos||[]).map(p => [
+        p.descripcion||'', p.marca||'', p.peso||'', p.codigo||'',
+        p.coll||'', p.interno||'', p.dto||'', p.cantidad||'',
+        p.precio||'', p.descuento||'', p.subtotal||''
+      ]);
+
+      doc.autoTable({
+        head, body,
+        startY: 100,
+        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [230,230,230], textColor: 20 }
+      });
+
+      // 1.a Guardar local (descarga)
+      doc.save(filename);
+
+      // 2) Enviar por correo + log + drive (Apps Script)
+      try {
+        const dataUri = doc.output('datauristring');
+        const base64  = (dataUri.split(',')[1]||'');
+        const meta    = {
+          cliente: pedido.cliente||'',
+          fecha: pedido.fechaPedido||hoy,
+          vendedor: pedido.vendedor||'',
+          transporte: pedido.transporte||'',
+          condiciones: pedido.condiciones||'',
+          fechaEntrega: pedido.fechaEntrega||'',
+          numProductos: (pedido.productos||[]).length
+        };
+
+        const res = await fetch(MAIL_WEBAPP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename, pdfBase64: base64, meta })
+        });
+        const json = await res.json().catch(()=>({}));
+        if (!json || json.ok !== true) throw new Error('respuesta_invalida');
+        alert('Enviado y guardado en Drive ✔️');
+      } catch (e) {
+        console.error(e);
+        alert('Error de envío al correo');
+      }
+    }
+
+    // ====== Borrado ======
+    function borrarPedido(i) {
+      if (!confirm('¿Eliminar este pedido?')) return;
+      const arr = getPedidos();
+      arr.splice(i,1);
+      setPedidos(arr);
+      renderPedidos();
+    }
+  </script>
 </body>
 </html>
